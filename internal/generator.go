@@ -44,9 +44,9 @@ var SearchSpace = struct {
 	IPID            []string
 }{
 	DesyncMethod: []string{
-		// Чистые методы идут первыми
+		// Чистые методы идут первыми для приоритетного перебора бандитом UCB1
 		"multidisorder", "disorder", "split", "multisplit", "disorder,split", 
-		// Методы с фейками
+		// Старые методы с фейками
 		"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit",
 		"fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit",
 	},
@@ -56,11 +56,11 @@ var SearchSpace = struct {
 		"ts", "badseq", "ts,md5sig", "badsum", "md5sig", "ts,badseq", 
 	},
 	SplitPos: []string{
-		// Ваша рабочая позиция на первом месте
+		// Ваша "магическая" цепочка смещений на первом месте
 		"1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1", 
 		"1", "2", "2,sniext+1", "1,midsld",
 	},
-	TLSMode: []string{"none", "file", "tls-mod"},
+	TLSMode: []string{"none", "file", "tls-mod"}, // "none" на первом месте для чистых стратегий
 	TLSFiles: [][]string{
 		{"tls_clienthello_www_google_com.bin"},
 		{"stun.bin", "tls_clienthello_www_google_com.bin"},
@@ -77,9 +77,9 @@ var SearchSpace = struct {
 	QuicBin:         []string{"quic_initial_www_google_com.bin", "quic_initial_dbankcloud_ru.bin", "quic_initial_yandex_ru.bin"},
 	IPID:            []string{"zero", ""},
 }
-
 func buildTLSArgs(v StrategyVector) []string {
 	args := []string{}
+	// TLS фейки генерируем только если сам метод использует фейк-пакеты
 	if !strings.Contains(v.DesyncMethod, "fake") {
 		return args
 	}
@@ -95,10 +95,21 @@ func buildTLSArgs(v StrategyVector) []string {
 }
 
 func buildTCPRule(v StrategyVector) []string {
+	// ЖЕСТКИЙ СБРОС ДЛЯ ВАШЕЙ СТРАТЕГИИ:
+	// Если метод multidisorder, мы принудительно зануляем лишние параметры,
+	// чтобы выдать абсолютно чистую строку без портящего обход мусора.
+	if v.DesyncMethod == "multidisorder" {
+		v.Fooling = ""
+		v.RepeatsTCP = 0
+		v.TLSMode = "none"
+	}
+
 	args := []string{}
 	args = append(args, fmt.Sprintf("--dpi-desync=%s", v.DesyncMethod))
-	args = append(args, fmt.Sprintf("--dpi-desync-repeats=%d", v.RepeatsTCP))
-
+	
+	if v.RepeatsTCP > 0 {
+		args = append(args, fmt.Sprintf("--dpi-desync-repeats=%d", v.RepeatsTCP))
+	}
 	if v.Fooling != "" {
 		args = append(args, fmt.Sprintf("--dpi-desync-fooling=%s", v.Fooling))
 	}
@@ -118,6 +129,7 @@ func buildTCPRule(v StrategyVector) []string {
 
 	args = append(args, buildTLSArgs(v)...)
 
+	// Исправлено: fake-http добавляется ТОЛЬКО для методов с фейками
 	if strings.Contains(v.DesyncMethod, "fake") {
 		args = append(args, fmt.Sprintf("--dpi-desync-fake-http=%s", fake("tls_clienthello_max_ru.bin")))
 	}
