@@ -23,7 +23,7 @@ type StrategyVector struct {
 	QuicBin         string
 	AnyProtocol     bool
 	IPID            string
-	AutoTTL         string // <-- ДОБАВЛЕНО: для поддержки параметра --dpi-desync-autottl (из Yv06)
+	AutoTTL         string // Поддержка параметра --dpi-desync-autottl (из Yv06)
 }
 
 // SearchSpace defines all possible values for each parameter
@@ -43,7 +43,7 @@ var SearchSpace = struct {
 	BadseqIncrement []int
 	QuicBin         []string
 	IPID            []string
-	AutoTTL         []string // <-- ДОБАВЛЕНО в пространство поиска
+	AutoTTL         []string
 }{
 	DesyncMethod: []string{
 		// ЧИСТЫЕ МЕТОДЫ И НОВЫЕ РЕЖИМЫ (Из Yv02, Yv04, Yv11, Yv17)
@@ -54,12 +54,12 @@ var SearchSpace = struct {
 		"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit",
 		"fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit",
 	},
-	RepeatsTCP: []int{0, 2, 4, 6, 8, 10, 11, 12, 14}, // <-- Добавлен repeat=2 (из Yv07, Yv08, Yv12, Yv14) и 0 (дефолт)
+	RepeatsTCP: []int{0, 2, 4, 6, 8, 10, 11, 12, 14}, // Включая repeat=2 и 0 (дефолт)
 	RepeatsUDP: []int{4, 6, 10, 11, 12},
 	Fooling: []string{
-		"", // Без флага fooling (для вашей оригинальной чистой стратегии)
+		"", // Без флага fooling (для чистых стратегий)
 		"ts", "badseq", "ts,md5sig", "badsum", "md5sig", "ts,badseq", 
-		"badsum,badseq", "badseq,badsum", // <-- ДОБАВЛЕНО: двойные комбинации fooling (из Yv03, Yv05, Yv15, Yv16, Yv23, Yv24)
+		"badsum,badseq", "badseq,badsum", // Комбинации из Yv03, Yv05, Yv15, Yv16
 	},
 	SplitPos: []string{
 		// ТОП ЛУЧШИХ СТРАТЕГИЙ НА ПЕРВЫЕ МЕСТА ТЕСТА
@@ -76,7 +76,7 @@ var SearchSpace = struct {
 	TLSMode: []string{"none", "file", "tls-mod"},
 	TLSFiles: [][]string{
 		{"tls_clienthello_www_google_com.bin"},
-		{"stun.bin"}, // <-- ДОБАВЛЕНО (из Yv22, Yv23, Yv24)
+		{"stun.bin"}, // Из Yv22, Yv23, Yv24
 		{"stun.bin", "tls_clienthello_www_google_com.bin"},
 		{"stun.bin", "tls_clienthello_max_ru.bin"},
 		{"tls_clienthello_4pda_to.bin"},
@@ -86,26 +86,27 @@ var SearchSpace = struct {
 		"none",
 		"rnd,dupsid,sni=://google.com", 
 		"rnd,dupsid,sni=ya.ru",
-		"rnd,dupsid,sni=://google.com", // <-- ДОБАВЛЕНО (из Yv05, Yv13, Yv14)
-		"rnd,dupsid,sni=ggpht.com",        // <-- ДОБАВЛЕНО (из Yv03, Yv15)
+		"rnd,dupsid,sni=://google.com", // Из Yv05, Yv13, Yv14
+		"rnd,dupsid,sni=ggpht.com",        // Из Yv03, Yv15
 	},
-	SeqOvl: []int{0, 1, 4, 336, 568, 620, 654, 664, 679, 681, 2108}, // <-- ДОБАВЛЕНЫ все размеры наложений из списка стратегий
+	SeqOvl: []int{0, 1, 4, 336, 568, 620, 654, 664, 679, 681, 2108}, // Размеры наложений из списка
 	SeqOvlPattern: []string{
 		"tls_clienthello_www_google_com.bin", 
 		"tls_clienthello_4pda_to.bin", 
 		"tls_clienthello_max_ru.bin",
-		"stun.bin", // <-- ДОБАВЛЕНО (из Yv24)
-		"tls_clienthello_gosuslugi_ru.bin", // <-- ДОБАВЛЕНО (из Yv05)
+		"stun.bin", // Из Yv24
+		"tls_clienthello_gosuslugi_ru.bin", // Из Yv05
 	},
-	HostFakeMod: []string{"://google.com", "google.com", "ya.ru", "ozon.ru", "://2gis.com"}, // <-- Расширено (из Yv19, Yv25)
-	Cutoff:      []string{"", "n2", "n3", "n4", "n5"},
-	BadseqIncrement: []int{0, 2, 1000, 10000000}, // <-- Добавлен 0 (из Yv05, Yv16, Yv23, Yv24, Yv25)
+	HostFakeMod: []string{"://google.com", "google.com", "ya.ru", "ozon.ru", "://2gis.com"}, // Из Yv19, Yv25
+	Cutoff:          []string{"", "n2", "n3", "n4", "n5"},
+	BadseqIncrement: []int{0, 2, 1000, 10000000}, // Из Yv05, Yv16, Yv23, Yv24
 	QuicBin:         []string{"quic_initial_www_google_com.bin", "quic_initial_dbankcloud_ru.bin", "quic_initial_yandex_ru.bin"},
 	IPID:            []string{"zero", ""},
-	AutoTTL:         []string{"", "2:2-12", "2:1-10"}, // <-- Варианты автоподбора TTL против ТСПУ
+	AutoTTL:         []string{"", "2:2-12", "2:1-10"}, // Из Yv06
 }
 func buildTLSArgs(v StrategyVector) []string {
 	args := []string{}
+	// TLS фейки генерируем только если сам метод использует фейк-пакеты
 	if !strings.Contains(v.DesyncMethod, "fake") {
 		return args
 	}
@@ -122,9 +123,10 @@ func buildTLSArgs(v StrategyVector) []string {
 }
 
 func buildTCPRule(v StrategyVector) []string {
-	// СИЛОВОЙ СБРОС ДЛЯ ВАШЕЙ ОРИГИНАЛЬНОЙ СТРАТЕГИИ:
-	// Чтобы мусорные флаги не ломали чистый multidisorder на старте теста
-	if v.DesyncMethod == "multidisorder" && strings.HasPrefix(v.SplitPos, "1,sniext+1,host+1") {
+	// ГЛОБАЛЬНЫЙ СБРОС ДЛЯ ВСЕХ ЧИСТЫХ МЕТОДОВ:
+	// Если метод не содержит фейков (fake), принудительно убираем весь мешающий fooling
+	// и TLS-модификации, чтобы выдать абсолютно чистую строку без ломающего обход мусора.
+	if !strings.Contains(v.DesyncMethod, "fake") {
 		v.Fooling = ""
 		v.RepeatsTCP = 0
 		v.TLSMod = "none"
@@ -165,6 +167,7 @@ func buildTCPRule(v StrategyVector) []string {
 
 	args = append(args, buildTLSArgs(v)...)
 
+	// fake-http добавляется ТОЛЬКО для методов с фейками
 	if strings.Contains(v.DesyncMethod, "fake") {
 		args = append(args, fmt.Sprintf("--dpi-desync-fake-http=%s", fake("tls_clienthello_max_ru.bin")))
 	}
