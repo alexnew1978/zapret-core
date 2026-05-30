@@ -1,10 +1,11 @@
-package main
+package internal
 
 import (
 	"fmt"
 	"strings"
 )
 
+// StrategyVector holds all variable parameters for DPI bypass strategies
 type StrategyVector struct {
 	DesyncMethod    string
 	RepeatsTCP      int
@@ -24,6 +25,7 @@ type StrategyVector struct {
 	IPID            string
 }
 
+// SearchSpace defines all possible values for each parameter
 var SearchSpace = struct {
 	DesyncMethod    []string
 	RepeatsTCP      []int
@@ -42,7 +44,9 @@ var SearchSpace = struct {
 	IPID            []string
 }{
 	DesyncMethod: []string{
+		// Чистые методы идут первыми
 		"multidisorder", "disorder", "split", "multisplit", "disorder,split", 
+		// Методы с фейками
 		"fake", "fake,fakedsplit", "fake,multisplit", "fake,hostfakesplit",
 		"fake,multidisorder", "syndata,multidisorder", "syndata", "hostfakesplit",
 	},
@@ -52,6 +56,7 @@ var SearchSpace = struct {
 		"ts", "badseq", "ts,md5sig", "badsum", "md5sig", "ts,badseq", 
 	},
 	SplitPos: []string{
+		// Ваша рабочая позиция на первом месте
 		"1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1", 
 		"1", "2", "2,sniext+1", "1,midsld",
 	},
@@ -72,6 +77,7 @@ var SearchSpace = struct {
 	QuicBin:         []string{"quic_initial_www_google_com.bin", "quic_initial_dbankcloud_ru.bin", "quic_initial_yandex_ru.bin"},
 	IPID:            []string{"zero", ""},
 }
+
 func buildTLSArgs(v StrategyVector) []string {
 	args := []string{}
 	if !strings.Contains(v.DesyncMethod, "fake") {
@@ -174,8 +180,3 @@ func VectorToStrategy(v StrategyVector, id int) *Strategy {
 		Args: Generate(v),
 	}
 }
-
-func fake(s string) string  { return s }
-func lists(s string) string { return s }
-type Strategy struct { Name string; Args []string }
-func main() {}
