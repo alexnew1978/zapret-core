@@ -34,7 +34,7 @@ jobs:
         run: go test ./...
 
       - name: Build
-        run: go build -ldflags="-s -w" -o zapret-core.exe . # <-- Убран флаг -H windowsgui для сохранения вывода в консоль
+        run: go build -ldflags="-s -w" -o zapret-core.exe ./internal # <-- Убран флаг -H windowsgui для сохранения вывода в консоль
 
       - name: Create distribution directory
         run: |
