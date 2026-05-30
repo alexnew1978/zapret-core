@@ -1,9 +1,14 @@
 name: Build and Release
-
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: # <-- Добавлен триггер для ручного запуска
+    inputs:
+      version:
+        description: 'Версия релиза (например, v1.0.1)'
+        required: true
+        default: 'v1.0.0'
 
 permissions:
   contents: write
@@ -13,25 +18,24 @@ jobs:
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: 'stable' # <-- Исправлено на стабильную актуальную версию Go
           cache: false
-      
+
       - name: Run tests
         run: go test ./...
-      
+
       - name: Build
-        run: go build -ldflags="-s -w -H windowsgui" -o zapret-core.exe .
-      
+        run: go build -ldflags="-s -w" -o zapret-core.exe . # <-- Убран флаг -H windowsgui для сохранения вывода в консоль
+
       - name: Create distribution directory
         run: |
           mkdir dist
@@ -41,145 +45,81 @@ jobs:
           xcopy /E /I /Y lists dist\zapret-core\lists
           copy README.md dist\zapret-core\
           copy README.ru.md dist\zapret-core\
-      
+
       - name: Get version
         id: get_version
         run: |
-          $version = git describe --tags --abbrev=0
+          # Если запуск ручной, берем версию из инпута, иначе — из тега git
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+              $version = "${{ github.event.inputs.version }}"
+          } else {
+              $version = git describe --tags --abbrev=0
+          }
           Write-Output "VERSION=$version" >> $env:GITHUB_OUTPUT
         shell: pwsh
-      
+
       - name: Create zip
         run: powershell -Command "Compress-Archive -Path 'dist\zapret-core' -DestinationPath 'zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip' -Force"
-      
+
       - name: Generate Release Notes
         id: release_notes
         run: |
-          $version = git describe --tags --abbrev=0
+          $version = "${{ steps.get_version.outputs.VERSION }}"
           Write-Host "Version: $version"
           $prevTag = & git describe --tags --abbrev=0 HEAD^ 2>&1
           if ($LASTEXITCODE -ne 0) { $prevTag = "" }
           Write-Host "Previous tag: $prevTag"
-          
           if ($prevTag) {
-            $commits = & git log "${prevTag}..HEAD" --pretty=format:%s
+              $commits = & git log "${prevTag}..HEAD" --pretty=format:%s
           } else {
-            $commits = & git log HEAD --pretty=format:%s -20
+              $commits = & git log HEAD --pretty=format:%s -20
           }
-          
-          $feat = @()
-          $fix = @()
-          $docs = @()
-          $refactor = @()
-          $chore = @()
-          $ci = @()
-          $debug = @()
-          $other = @()
-          
-          Write-Host "Commit count: $($commits.Count)"
-          Write-Host "First commit: '$($commits[0])'"
-          $commits | ForEach-Object { Write-Host "RAW: '$_'" }
-          foreach ($commit in $commits) {
-            if ($commit -match '^feat\((.+)\):\s+(.+)$') {
-              $feat += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^feat:\s+(.+)$') {
-              $feat += "  - $($matches[1])"
-            } elseif ($commit -match '^fix\((.+)\):\s+(.+)$') {
-              $fix += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^fix:\s+(.+)$') {
-              $fix += "  - $($matches[1])"
-            } elseif ($commit -match '^docs\((.+)\):\s+(.+)$') {
-              $docs += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^docs:\s+(.+)$') {
-              $docs += "  - $($matches[1])"
-            } elseif ($commit -match '^refactor\((.+)\):\s+(.+)$') {
-              $refactor += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^refactor:\s+(.+)$') {
-              $refactor += "  - $($matches[1])"
-            } elseif ($commit -match '^chore\((.+)\):\s+(.+)$') {
-              $chore += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^chore:\s+(.+)$') {
-              $chore += "  - $($matches[1])"
-            } elseif ($commit -match '^ci\((.+)\):\s+(.+)$') {
-              $ci += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^ci:\s+(.+)$') {
-              $ci += "  - $($matches[1])"
-            } elseif ($commit -match '^debug\((.+)\):\s+(.+)$') {
-              $debug += "  - **$($matches[1])**: $($matches[2])"
-            } elseif ($commit -match '^debug:\s+(.+)$') {
-              $debug += "  - $($matches[1])"
-            } else {
-              $other += "  - $commit"
-            }
+          $feat = @(); $fix = @(); $docs = @(); $refactor = @(); $chore = @(); $ci = @(); $debug = @(); $other = @()
+          if ($commits) {
+              foreach ($commit in $commits) {
+                  if ($commit -match '^feat\((.+)\):\s+(.+)$') { $feat += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^feat:\s+(.+)$') { $feat += " - $($matches[1])" }
+                  elseif ($commit -match '^fix\((.+)\):\s+(.+)$') { $fix += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^fix:\s+(.+)$') { $fix += " - $($matches[1])" }
+                  elseif ($commit -match '^docs\((.+)\):\s+(.+)$') { $docs += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^docs:\s+(.+)$') { $docs += " - $($matches[1])" }
+                  elseif ($commit -match '^refactor\((.+)\):\s+(.+)$') { $refactor += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^refactor:\s+(.+)$') { $refactor += " - $($matches[1])" }
+                  elseif ($commit -match '^chore\((.+)\):\s+(.+)$') { $chore += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^chore:\s+(.+)$') { $chore += " - $($matches[1])" }
+                  elseif ($commit -match '^ci\((.+)\):\s+(.+)$') { $ci += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^ci:\s+(.+)$') { $ci += " - $($matches[1])" }
+                  elseif ($commit -match '^debug\((.+)\):\s+(.+)$') { $debug += " - **$($matches[1])**: $($matches[2])" }
+                  elseif ($commit -match '^debug:\s+(.+)$') { $debug += " - $($matches[1])" }
+                  else { $other += " - $commit" }
+              }
           }
-          
           $notes = "## What's New in $version`n`n"
-          
-          if ($feat.Count -gt 0) {
-            $notes += "### Features`n"
-            $feat | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($fix.Count -gt 0) {
-            $notes += "### Bug Fixes`n"
-            $fix | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($docs.Count -gt 0) {
-            $notes += "### Documentation`n"
-            $docs | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($refactor.Count -gt 0) {
-            $notes += "### Refactoring`n"
-            $refactor | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($chore.Count -gt 0) {
-            $notes += "### Chores`n"
-            $chore | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($ci.Count -gt 0) {
-            $notes += "### CI`n"
-            $ci | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($debug.Count -gt 0) {
-            $notes += "### Debug`n"
-            $debug | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
-          if ($other.Count -gt 0) {
-            $notes += "### Other Changes`n"
-            $other | ForEach-Object { $notes += "$_`n" }
-            $notes += "`n"
-          }
-          
+          if ($feat.Count -gt 0) { $notes += "### Features`n"; $feat | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($fix.Count -gt 0) { $notes += "### Bug Fixes`n"; $fix | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($docs.Count -gt 0) { $notes += "### Documentation`n"; $docs | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($refactor.Count -gt 0) { $notes += "### Refactoring`n"; $refactor | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($chore.Count -gt 0) { $notes += "### Chores`n"; $chore | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($ci.Count -gt 0) { $notes += "### CI`n"; $ci | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($debug.Count -gt 0) { $notes += "### Debug`n"; $debug | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
+          if ($other.Count -gt 0) { $notes += "### Other Changes`n"; $other | ForEach-Object { $notes += "$_`n" }; $notes += "`n" }
           $notes += "---`n`n"
-          $notes += "**Download:** [zapret-core-$version-windows-amd64.zip](https://github.com/elev1e1nSure/zapret-core/releases/download/$version/zapret-core-$version-windows-amd64.zip)`n`n"
+          $notes += "**Download:** [zapret-core-$version-windows-amd64.zip](https://github.com{{ github.repository }}/releases/download/$version/zapret-core-$version-windows-amd64.zip)`n`n"
           $notes += "**Note:** Run as administrator. WinDivert requires kernel driver access."
-          
           $notes | Out-File -FilePath "release_notes.md" -Encoding UTF8
         shell: pwsh
-      
+
       - name: Generate checksum
         run: |
           $zip = "zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip"
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  $zip" | Out-File -FilePath "checksums.txt" -Encoding UTF8
+          "$hash $zip" | Out-File -FilePath "checksums.txt" -Encoding UTF8
         shell: pwsh
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }} # Прописываем тег принудительно (актуально для ручного запуска)
           files: |
             zapret-core-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip
             checksums.txt
